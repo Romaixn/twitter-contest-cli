@@ -20,6 +20,7 @@ import (
 const TwitterUrl = "https://api.twitter.com"
 const AuthUrl = TwitterUrl + "/oauth2/token"
 const RetweetsUrl = TwitterUrl + "/1.1/statuses/retweets/"
+const UserUrl = TwitterUrl + "/2/users/"
 
 type Login struct {
 	TokenType   string `json:"token_type"`
@@ -31,7 +32,8 @@ type Retweets []struct {
 }
 
 type User struct {
-	ID int `json:"id"`
+	ID       int    `json:"id"`
+	Username string `json:"username"`
 }
 
 func getEncodingCredentials() string {
@@ -176,6 +178,38 @@ func (retweets *Retweets) PickWinner() (User, error) {
 	return (*retweets)[n].User, nil
 }
 
+func (user *User) GetInfo() User {
+	req, _ := http.NewRequest(http.MethodGet, UserUrl+strconv.Itoa(user.ID)+"?user.fields=username", nil)
+	req.Header.Add("Authorization", "Bearer "+login().AccessToken)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatalf("Error during login request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Error during read of login response: %v", err)
+	}
+
+	var response struct {
+		Data struct {
+			ID       string `json:"id"`
+			Username string `json:"username"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		log.Fatalf("Can not unmarshal JSON: %v", err)
+	}
+
+	user.Username = response.Data.Username
+
+	return *user
+}
+
 func main() {
 	id := flag.Int("id", 1633078861259759618, "The ID of a Twitter retweet")
 	pickWinner := flag.Bool("pick", false, "Pick winner ?")
@@ -191,6 +225,8 @@ func main() {
 			log.Fatalf("Error when pick winner: %v", err)
 		}
 
-		fmt.Println("The winner is:", winner.ID)
+		winner = winner.GetInfo()
+
+		fmt.Println("The winner is:", "@"+winner.Username)
 	}
 }
